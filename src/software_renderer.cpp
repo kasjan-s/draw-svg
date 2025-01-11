@@ -283,10 +283,70 @@ void SoftwareRendererImp::rasterize_line( float x0, float y0,
 
   // Task 0: 
   // Implement Bresenham's algorithm (delete the line below and implement your own)
-  ref->rasterize_line_helper(x0, y0, x1, y1, width, height, color, this);
+  // ref->rasterize_line_helper(x0, y0, x1, y1, width, height, color, this);
+
+  int sx0 = static_cast<int>(floor(x0));
+  int sx1 = static_cast<int>(floor(x1));
+  int sy0 = static_cast<int>(floor(y0));
+  int sy1 = static_cast<int>(floor(y1));
+
+  bresenham(sx0, sy0, sx1, sy1, color);
 
   // Advanced Task
   // Drawing Smooth Lines with Line Width
+}
+
+void SoftwareRendererImp::bresenham(int x0, int y0, int x1, int y1, Color color, bool reflect) {
+  int dx = x1 - x0;
+  int dy = y1 - y0;
+  int y = y0;
+  int error = 0;
+
+  // Switch the point order so we iterate from smaller x coordinate.
+  if (dx < 0) {
+    // std::cerr << "dx < 0\n";
+    return bresenham(x1, y1, x0, y0, color, reflect);
+  }
+
+  int float_sign = 1;
+  if (dx != 0) {
+    // Slope value.
+    float m = static_cast<float>(dy) / dx;
+
+    if (m < 0) {
+      float_sign = -1;
+    }
+
+    if (abs(m) > 1) {
+      // Bresenham algorithm works for slopes with abs value less or equal to 1. 
+      // For higher slopes we are reflecting the line around y=x slope by swapping x0 with y0, and x1 with y1.
+      // This allows us to reuse Bresenham's algorithm for quadrants where slope is bigger than 1, as in this new
+      // reflected coordinate system new slope value is m' = (x1-x0) / (y1-y0) = 1/m ==> it's between 0 and 1.
+      return bresenham(y0, x0, y1, x1, color, true);
+    }
+  } else {
+    // 1 pixel line.
+    if (dy == 0) {
+      return fill_pixel(x0, y0, color);
+    }
+
+    // dx == 0 is equivalent to slope m = infinity, so we need to reflect, where m' is equivalent to 0.
+    return bresenham(y0, x0, y1, x1, color, true);
+  }
+
+  for (int x = x0; x <= x1; ++x) {
+    if (reflect) {
+      fill_pixel(y, x, color);
+    } else {
+      fill_pixel(x, y, color);
+    }
+    
+    error += float_sign * dy;
+    if ((error << 1) >= float_sign * dx) {
+      y += float_sign;
+      error -= dx;
+    }
+  }
 }
 
 void SoftwareRendererImp::rasterize_triangle( float x0, float y0,

@@ -137,6 +137,10 @@ private:
 	void rasterize_line(float x0, float y0,
 		float x1, float y1,
 		Color color);
+	
+	// Implementation of Bresenham's algorithm to draw a line.
+	// |reflect| indicates that we are reflecting coordinate system around y=x slope.
+	void bresenham(int x0, int y0, int x1, int y1, Color color, bool reflect = false);
 
 	// rasterize a triangle
 	void rasterize_triangle(float x0, float y0,
