@@ -349,12 +349,51 @@ void SoftwareRendererImp::bresenham(int x0, int y0, int x1, int y1, Color color,
   }
 }
 
+struct LineEquation {
+  float A;
+  float B;
+  float C;
+
+  explicit LineEquation(float x0, float y0, float x1, float y1) {
+    A = y1 - y0;
+    B = -(x1 - x0);
+    C = y0 * (x1 - x0) - x0 * (y1 - y0);
+  }
+
+  float test(float x, float y) const {
+    return A * x + B * y + C;
+  }
+};
+
 void SoftwareRendererImp::rasterize_triangle( float x0, float y0,
                                               float x1, float y1,
                                               float x2, float y2,
                                               Color color ) {
   // Task 1: 
   // Implement triangle rasterization
+  int bound_x0 = static_cast<int>(floor(min(x0, min(x1, x2))));
+  int bound_y0 = static_cast<int>(floor(min(y0, min(y1, y2))));
+  int bound_x1 = static_cast<int>(floor(max(x0, max(x1, x2))));
+  int bound_y1 = static_cast<int>(floor(max(y0, max(y1, y2))));
+
+  vector<LineEquation> lines = {
+    LineEquation(x0, y0, x1, y1),
+    LineEquation(x1, y1, x2, y2),
+    LineEquation(x2, y2, x0, y0)
+  };
+
+  float signed_area = x0*y1 - x1*y0 + x1*y2 - x2*y1 + x2*y0 - x0*y2;
+  int orientation = signed_area >= 0 ? 1 : -1;
+
+  for (int x = bound_x0; x <= bound_x1; ++x) {
+    for (int y = bound_y0; y <= bound_y1; ++y) {
+      if (all_of(lines.begin(), lines.end(), [x, y, orientation](const LineEquation& line) {
+          return orientation * line.test(x, y) <= 0;
+        })) {
+        fill_pixel(x, y, color);
+      }
+    }
+  }
 
   // Advanced Task
   // Implementing Triangle Edge Rules
