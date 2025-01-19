@@ -11,12 +11,38 @@ using namespace std;
 
 namespace CS248 {
 
+namespace {
+  int get_sample_coordinate(float coord, int sample_rate) {
+    float remainder = coord - floor(coord);
+    int extra = static_cast<int>(remainder * sample_rate);
+    return sample_rate * coord + extra;
+  }
+}
 
 // Implements SoftwareRenderer //
 
 // fill a sample location with color
 void SoftwareRendererImp::fill_sample(int sx, int sy, const Color &color) {
   // Task 2: implement this function
+  // check bounds
+  if (sx < 0 || sx >= sample_rate * width) return;
+  if (sy < 0 || sy >= sample_rate * height) return;
+
+  Color pixel_color;
+  float inv255 = 1.0 / 255.0;
+  size_t sample_width = width * sample_rate;
+
+	pixel_color.r = sample_buffer[4 * (sx + sy * sample_width)] * inv255;
+	pixel_color.g = sample_buffer[4 * (sx + sy * sample_width) + 1] * inv255;
+	pixel_color.b = sample_buffer[4 * (sx + sy * sample_width) + 2] * inv255;
+	pixel_color.a = sample_buffer[4 * (sx + sy * sample_width) + 3] * inv255;
+
+	pixel_color = ref->alpha_blending_helper(pixel_color, color);
+
+	sample_buffer[4 * (sx + sy * sample_width)] = (uint8_t)(pixel_color.r * 255);
+	sample_buffer[4 * (sx + sy * sample_width) + 1] = (uint8_t)(pixel_color.g * 255);
+	sample_buffer[4 * (sx + sy * sample_width) + 2] = (uint8_t)(pixel_color.b * 255);
+	sample_buffer[4 * (sx + sy * sample_width) + 3] = (uint8_t)(pixel_color.a * 255);
 }
 
 // fill samples in the entire pixel specified by pixel coordinates
@@ -30,6 +56,7 @@ void SoftwareRendererImp::fill_pixel(int x, int y, const Color &color) {
 
 	Color pixel_color;
 	float inv255 = 1.0 / 255.0;
+  
 	pixel_color.r = pixel_buffer[4 * (x + y * width)] * inv255;
 	pixel_color.g = pixel_buffer[4 * (x + y * width) + 1] * inv255;
 	pixel_color.b = pixel_buffer[4 * (x + y * width) + 2] * inv255;
@@ -37,11 +64,17 @@ void SoftwareRendererImp::fill_pixel(int x, int y, const Color &color) {
 
 	pixel_color = ref->alpha_blending_helper(pixel_color, color);
 
-	pixel_buffer[4 * (x + y * width)] = (uint8_t)(pixel_color.r * 255);
-	pixel_buffer[4 * (x + y * width) + 1] = (uint8_t)(pixel_color.g * 255);
-	pixel_buffer[4 * (x + y * width) + 2] = (uint8_t)(pixel_color.b * 255);
-	pixel_buffer[4 * (x + y * width) + 3] = (uint8_t)(pixel_color.a * 255);
+  for (int i = 0; i < sample_rate; ++i) {
+    for (int j = 0; j < sample_rate; ++j) {
+      int sx = sample_rate * x + i;
+      int sy = sample_rate * y + j;
 
+      sample_buffer[4 * (sx + sy * sample_rate * width)] = (uint8_t)(pixel_color.r * 255);
+      sample_buffer[4 * (sx + sy * sample_rate * width) + 1] = (uint8_t)(pixel_color.g * 255);
+      sample_buffer[4 * (sx + sy * sample_rate * width) + 2] = (uint8_t)(pixel_color.b * 255);
+      sample_buffer[4 * (sx + sy * sample_rate * width) + 3] = (uint8_t)(pixel_color.a * 255);
+    }
+  }
 }
 
 void SoftwareRendererImp::draw_svg( SVG& svg ) {
@@ -57,6 +90,8 @@ void SoftwareRendererImp::draw_svg( SVG& svg ) {
 
   svg_bbox_top_left = Vector2D(a.x+1, a.y+1);
   svg_bbox_bottom_right = Vector2D(d.x-1, d.y-1);
+
+  update_sample_buffer();
 
   // draw all elements
   for (size_t i = 0; i < svg.elements.size(); ++i) {
@@ -79,6 +114,7 @@ void SoftwareRendererImp::set_sample_rate( size_t sample_rate ) {
   // Task 2: 
   // You may want to modify this for supersampling support
   this->sample_rate = sample_rate;
+  update_sample_buffer();
 
 }
 
@@ -90,6 +126,7 @@ void SoftwareRendererImp::set_pixel_buffer( unsigned char* pixel_buffer,
   this->pixel_buffer = pixel_buffer;
   this->width = width;
   this->height = height;
+  update_sample_buffer();
 
 }
 
@@ -270,48 +307,38 @@ void SoftwareRendererImp::rasterize_point( float x, float y, Color color ) {
 
   // fill sample - NOT doing alpha blending!
   // TODO: Call fill_pixel here to run alpha blending
-  pixel_buffer[4 * (sx + sy * width)] = (uint8_t)(color.r * 255);
-  pixel_buffer[4 * (sx + sy * width) + 1] = (uint8_t)(color.g * 255);
-  pixel_buffer[4 * (sx + sy * width) + 2] = (uint8_t)(color.b * 255);
-  pixel_buffer[4 * (sx + sy * width) + 3] = (uint8_t)(color.a * 255);
+  // pixel_buffer[4 * (sx + sy * width)] = (uint8_t)(color.r * 255);
+  // pixel_buffer[4 * (sx + sy * width) + 1] = (uint8_t)(color.g * 255);
+  // pixel_buffer[4 * (sx + sy * width) + 2] = (uint8_t)(color.b * 255);
+  // pixel_buffer[4 * (sx + sy * width) + 3] = (uint8_t)(color.a * 255);
 
+  fill_pixel(sx, sy, color);
 }
 
 void SoftwareRendererImp::rasterize_line( float x0, float y0,
                                           float x1, float y1,
-                                          Color color) {
+                                          Color color,
+                                          int width) {
 
   // Task 0: 
   // Implement Bresenham's algorithm (delete the line below and implement your own)
   // ref->rasterize_line_helper(x0, y0, x1, y1, width, height, color, this);
-
-  int sx0 = static_cast<int>(floor(x0));
-  int sx1 = static_cast<int>(floor(x1));
-  int sy0 = static_cast<int>(floor(y0));
-  int sy1 = static_cast<int>(floor(y1));
-
-  bresenham(sx0, sy0, sx1, sy1, color);
+  bresenham(x0, y0, x1, y1, color, width);
 
   // Advanced Task
   // Drawing Smooth Lines with Line Width
 }
 
-void SoftwareRendererImp::bresenham(int x0, int y0, int x1, int y1, Color color, bool reflect) {
-  int dx = x1 - x0;
-  int dy = y1 - y0;
-  int y = y0;
-  int error = 0;
-
+void SoftwareRendererImp::bresenham(float x0, float y0, float x1, float y1, Color color, int width, bool reflect) {
   // Switch the point order so we iterate from smaller x coordinate.
-  if (dx < 0) {
-    // std::cerr << "dx < 0\n";
-    return bresenham(x1, y1, x0, y0, color, reflect);
+  if (x1 - x0 < 0) {
+    return bresenham(x1, y1, x0, y0, color, width, reflect);
   }
 
   int float_sign = 1;
-  if (dx != 0) {
+  if (x1 != x0) {
     // Slope value.
-    float m = static_cast<float>(dy) / dx;
+    float m = (y1-y0)/(x1-x0);
 
     if (m < 0) {
       float_sign = -1;
@@ -322,25 +349,38 @@ void SoftwareRendererImp::bresenham(int x0, int y0, int x1, int y1, Color color,
       // For higher slopes we are reflecting the line around y=x slope by swapping x0 with y0, and x1 with y1.
       // This allows us to reuse Bresenham's algorithm for quadrants where slope is bigger than 1, as in this new
       // reflected coordinate system new slope value is m' = (x1-x0) / (y1-y0) = 1/m ==> it's between 0 and 1.
-      return bresenham(y0, x0, y1, x1, color, true);
+      return bresenham(y0, x0, y1, x1, color, width, true);
     }
   } else {
-    // 1 pixel line.
-    if (dy == 0) {
-      return fill_pixel(x0, y0, color);
+    // 1 point line.
+    if (y1 == y0) {
+      return rasterize_point(x0, y0, color);
     }
 
-    // dx == 0 is equivalent to slope m = infinity, so we need to reflect, where m' is equivalent to 0.
-    return bresenham(y0, x0, y1, x1, color, true);
+    // x0 == x1 is equivalent to slope m = infinity. If we reflect, we'll work equivalent line with m' = 0.
+    return bresenham(y0, x0, y1, x1, color, width, true);
   }
 
-  for (int x = x0; x <= x1; ++x) {
-    if (reflect) {
-      fill_pixel(y, x, color);
-    } else {
-      fill_pixel(x, y, color);
+  int sx0 = get_sample_coordinate(x0, sample_rate);
+  int sx1 = get_sample_coordinate(x1, sample_rate);
+  int sy0 = get_sample_coordinate(y0, sample_rate);
+  int sy1 = get_sample_coordinate(y1, sample_rate);
+
+  int dx = sx1 - sx0;
+  int dy = sy1 - sy0;
+  int y = sy0;
+  int error = 0;
+  for (int x = sx0; x <= sx1; ++x) {
+    int sample_width = sample_rate * width;
+    int sy = y - sample_width / 2;
+    for (int w = 0; w < sample_width; ++w) {
+      if (reflect) {
+        fill_sample(sy + w, x, color);
+      } else {
+        fill_sample(x, sy + w, color);
+      }
     }
-    
+
     error += float_sign * dy;
     if ((error << 1) >= float_sign * dx) {
       y += float_sign;
@@ -371,10 +411,10 @@ void SoftwareRendererImp::rasterize_triangle( float x0, float y0,
                                               Color color ) {
   // Task 1: 
   // Implement triangle rasterization
-  int bound_x0 = static_cast<int>(floor(min(x0, min(x1, x2))));
-  int bound_y0 = static_cast<int>(floor(min(y0, min(y1, y2))));
-  int bound_x1 = static_cast<int>(floor(max(x0, max(x1, x2))));
-  int bound_y1 = static_cast<int>(floor(max(y0, max(y1, y2))));
+  float bound_x0 = min(x0, min(x1, x2));
+  float bound_y0 = min(y0, min(y1, y2));
+  float bound_x1 = max(x0, max(x1, x2));
+  float bound_y1 = max(y0, max(y1, y2));
 
   vector<LineEquation> lines = {
     LineEquation(x0, y0, x1, y1),
@@ -387,10 +427,18 @@ void SoftwareRendererImp::rasterize_triangle( float x0, float y0,
 
   for (int x = bound_x0; x <= bound_x1; ++x) {
     for (int y = bound_y0; y <= bound_y1; ++y) {
-      if (all_of(lines.begin(), lines.end(), [x, y, orientation](const LineEquation& line) {
-          return orientation * line.test(x, y) <= 0;
-        })) {
-        fill_pixel(x, y, color);
+      for (int i = 0; i < sample_rate; ++i) {
+        for (int j = 0; j < sample_rate; ++j) { 
+          float sample_fraction = 1.0f / sample_rate;
+          float sample_x = sample_fraction * i + x;
+          float sample_y = sample_fraction * j + y;
+
+          if (all_of(lines.begin(), lines.end(), [sample_x, sample_y, orientation](const LineEquation& line) {
+              return orientation * line.test(sample_x, sample_y) <= 0;
+            })) {
+            fill_sample(x * sample_rate + i, y * sample_rate + j, color);
+          }
+        }
       }
     }
   }
@@ -414,8 +462,34 @@ void SoftwareRendererImp::resolve( void ) {
   // Task 2: 
   // Implement supersampling
   // You may also need to modify other functions marked with "Task 2".
-  return;
+  
+	float inv255 = 1.0 / 255.0;
+  float sample_fraction = 1.0f / (sample_rate * sample_rate);
 
+  for (int x = 0; x < width; ++x) {
+    for (int y = 0; y < height; ++y) {
+      Color pixel_color(0, 0, 0, 0);
+
+      for (int i = 0; i < sample_rate; ++i) {
+        for (int j = 0; j < sample_rate; ++j) {
+          int sx = sample_rate * x + i;
+          int sy = sample_rate * y + j;
+
+          pixel_color.r += sample_fraction * sample_buffer[4 * (sx + sy * sample_rate * width)];
+          pixel_color.g += sample_fraction * sample_buffer[4 * (sx + sy * sample_rate * width) + 1];
+          pixel_color.b += sample_fraction * sample_buffer[4 * (sx + sy * sample_rate * width) + 2];
+          pixel_color.a += sample_fraction * sample_buffer[4 * (sx + sy * sample_rate * width) + 3];
+        }
+      }
+
+      pixel_buffer[4 * (x + y * width)] = pixel_color.r;
+      pixel_buffer[4 * (x + y * width) + 1] = pixel_color.g;
+      pixel_buffer[4 * (x + y * width) + 2] = pixel_color.b;
+      pixel_buffer[4 * (x + y * width) + 3] = pixel_color.a;
+    }
+  }
+
+  return;
 }
 
 Color SoftwareRendererImp::alpha_blending(Color pixel_color, Color color)

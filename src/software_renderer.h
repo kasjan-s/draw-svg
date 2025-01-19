@@ -136,11 +136,12 @@ private:
 	// rasterize a line
 	void rasterize_line(float x0, float y0,
 		float x1, float y1,
-		Color color);
+		Color color,
+		int width = 1);
 	
 	// Implementation of Bresenham's algorithm to draw a line.
 	// |reflect| indicates that we are reflecting coordinate system around y=x slope.
-	void bresenham(int x0, int y0, int x1, int y1, Color color, bool reflect = false);
+	void bresenham(float x0, float y0, float x1, float y1, Color color, int width, bool reflect = false);
 
 	// rasterize a triangle
 	void rasterize_triangle(float x0, float y0,
@@ -158,6 +159,14 @@ private:
 
 	// task5 alpha compositing
 	Color alpha_blending(Color pixel_color, Color color);
+
+	void update_sample_buffer() {
+		sample_buffer.resize(4 * width * height * sample_rate * sample_rate);
+
+		fill(sample_buffer.begin(), sample_buffer.end(), 255);
+	}
+
+	std::vector<unsigned char> sample_buffer;
 
 	SoftwareRendererRef *ref;
 }; // class SoftwareRendererImp
