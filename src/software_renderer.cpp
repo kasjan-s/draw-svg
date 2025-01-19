@@ -28,21 +28,21 @@ void SoftwareRendererImp::fill_sample(int sx, int sy, const Color &color) {
   if (sx < 0 || sx >= sample_rate * width) return;
   if (sy < 0 || sy >= sample_rate * height) return;
 
-  Color pixel_color;
+  Color sample_color;
   float inv255 = 1.0 / 255.0;
   size_t sample_width = width * sample_rate;
 
-	pixel_color.r = sample_buffer[4 * (sx + sy * sample_width)] * inv255;
-	pixel_color.g = sample_buffer[4 * (sx + sy * sample_width) + 1] * inv255;
-	pixel_color.b = sample_buffer[4 * (sx + sy * sample_width) + 2] * inv255;
-	pixel_color.a = sample_buffer[4 * (sx + sy * sample_width) + 3] * inv255;
+	sample_color.r = sample_buffer[4 * (sx + sy * sample_width)] * inv255;
+	sample_color.g = sample_buffer[4 * (sx + sy * sample_width) + 1] * inv255;
+	sample_color.b = sample_buffer[4 * (sx + sy * sample_width) + 2] * inv255;
+	sample_color.a = sample_buffer[4 * (sx + sy * sample_width) + 3] * inv255;
 
-	pixel_color = ref->alpha_blending_helper(pixel_color, color);
+	sample_color = alpha_blending(sample_color, color);
 
-	sample_buffer[4 * (sx + sy * sample_width)] = (uint8_t)(pixel_color.r * 255);
-	sample_buffer[4 * (sx + sy * sample_width) + 1] = (uint8_t)(pixel_color.g * 255);
-	sample_buffer[4 * (sx + sy * sample_width) + 2] = (uint8_t)(pixel_color.b * 255);
-	sample_buffer[4 * (sx + sy * sample_width) + 3] = (uint8_t)(pixel_color.a * 255);
+	sample_buffer[4 * (sx + sy * sample_width)] = (uint8_t)(sample_color.r * 255);
+	sample_buffer[4 * (sx + sy * sample_width) + 1] = (uint8_t)(sample_color.g * 255);
+	sample_buffer[4 * (sx + sy * sample_width) + 2] = (uint8_t)(sample_color.b * 255);
+	sample_buffer[4 * (sx + sy * sample_width) + 3] = (uint8_t)(sample_color.a * 255);
 }
 
 // fill samples in the entire pixel specified by pixel coordinates
@@ -62,7 +62,7 @@ void SoftwareRendererImp::fill_pixel(int x, int y, const Color &color) {
 	pixel_color.b = pixel_buffer[4 * (x + y * width) + 2] * inv255;
 	pixel_color.a = pixel_buffer[4 * (x + y * width) + 3] * inv255;
 
-	pixel_color = ref->alpha_blending_helper(pixel_color, color);
+	pixel_color = alpha_blending(pixel_color, color);
 
   for (int i = 0; i < sample_rate; ++i) {
     for (int j = 0; j < sample_rate; ++j) {
@@ -496,6 +496,11 @@ Color SoftwareRendererImp::alpha_blending(Color pixel_color, Color color)
 {
   // Task 5
   // Implement alpha compositing
+  pixel_color.a = 1.0 - (1.0 - color.a) * (1.0 - pixel_color.a);
+  pixel_color.r = (1 - color.a) * pixel_color.r + color.r;
+  pixel_color.g = (1 - color.a) * pixel_color.g + color.g;
+  pixel_color.b = (1 - color.a) * pixel_color.b + color.b;
+
   return pixel_color;
 }
 
