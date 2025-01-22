@@ -8,6 +8,7 @@ namespace CS248 {
 
 static const int kMaxMipLevels = 14;
 
+
 typedef enum SampleMethod{
   NEAREST,
   BILINEAR,

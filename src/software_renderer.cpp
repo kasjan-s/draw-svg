@@ -4,6 +4,7 @@
 #include <vector>
 #include <iostream>
 #include <algorithm>
+#include "texture.h"
 
 #include "triangulation.h"
 
@@ -18,6 +19,8 @@ namespace {
     return sample_rate * coord + extra;
   }
 }
+
+
 
 // Implements SoftwareRenderer //
 
@@ -134,6 +137,8 @@ void SoftwareRendererImp::draw_element( SVGElement* element ) {
 
 	// Task 3 (part 1):
 	// Modify this to implement the transformation stack
+  Matrix3x3 previous_transformation = transformation;
+  transformation = transformation * (element->transform);
 
 	switch (element->type) {
 	case POINT:
@@ -163,6 +168,8 @@ void SoftwareRendererImp::draw_element( SVGElement* element ) {
 	default:
 		break;
 	}
+
+  transformation = previous_transformation;
 
 }
 
@@ -453,6 +460,32 @@ void SoftwareRendererImp::rasterize_image( float x0, float y0,
                                            Texture& tex ) {
   // Task 4: 
   // Implement image rasterization
+
+  // Create an instance of the sampler (adjust as needed to match your setup)
+  Sampler2DImp sampler(SampleMethod::NEAREST);
+  //Sampler2DImp sampler(SampleMethod::BILINEAR);
+
+  // Convert normalized coordinates to screen coordinates
+  int screen_x0 = static_cast<int>(std::floor(x0));
+  int screen_y0 = static_cast<int>(std::floor(y0));
+  int screen_x1 = static_cast<int>(std::ceil(x1));
+  int screen_y1 = static_cast<int>(std::ceil(y1));
+
+  // Iterate over the pixels in the bounding box
+  for (int y = screen_y0; y < screen_y1; ++y) {
+      for (int x = screen_x0; x < screen_x1; ++x) {
+          // Map screen space (x, y) to normalized texture coordinates (u, v)
+          float u = (x + 0.5f - x0) / (x1 - x0);
+          float v = (y + 0.5f - y0) / (y1 - y0);
+
+          // Sample the texture using bilinear interpolation via the sampler
+          Color tex_color = sampler.sample_nearest(tex, u, v, 0);
+          //Color tex_color = sampler.sample_bilinear(tex, u, v, 0);
+
+          // Blend the sampled color into the framebuffer
+          fill_pixel(x, y, tex_color);
+      }
+  }
 
 }
 

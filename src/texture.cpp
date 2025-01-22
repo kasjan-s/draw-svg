@@ -1,5 +1,6 @@
 #include "texture.h"
 #include "color.h"
+#include "CS248/misc.h"
 
 #include <assert.h>
 #include <iostream>
@@ -8,6 +9,11 @@
 using namespace std;
 
 namespace CS248 {
+
+
+Sampler2D::~Sampler2D() {
+    // Virtual destructor: no need to do anything for now.
+}
 
 inline void uint8_to_float( float dst[4], unsigned char* src ) {
   uint8_t* src_uint8 = (uint8_t *)src;
@@ -84,9 +90,34 @@ Color Sampler2DImp::sample_nearest(Texture& tex,
                                    int level) {
 
   // Task 4: Implement nearest neighbour interpolation
+
+    if (level < 0 || level >= tex.mipmap.size()) {
+      return Color(1,0,1,1);
+    }
   
-  // return magenta for invalid level
-  return Color(1,0,1,1);
+    // Get the appropriate mip level
+    MipLevel& mip = tex.mipmap[level];
+
+    // Ensure u and v are in the range [0, 1]
+    u = clamp(u, 0.0f, 1.0f);
+    v = clamp(v, 0.0f, 1.0f);
+
+    // Calculate the coordinates for the texture
+    int x = static_cast<int>(u * mip.width);
+    int y = static_cast<int>(v * mip.height);
+
+
+    // Calculate the texel index in the mip level's texels array
+    int texel_index = y * mip.width + x;
+
+    // Return the color at the nearest texel
+    unsigned char r = mip.texels[texel_index * 4 + 0];  // Red channel
+    unsigned char g = mip.texels[texel_index * 4 + 1];  // Green channel
+    unsigned char b = mip.texels[texel_index * 4 + 2];  // Blue channel
+    unsigned char a = mip.texels[texel_index * 4 + 3];  // Alpha channel
+
+    // Return the color object (normalize the texel values to [0, 1] range)
+    return Color(r / 255.0f, g / 255.0f, b / 255.0f, a / 255.0f);
 
 }
 
@@ -96,8 +127,56 @@ Color Sampler2DImp::sample_bilinear(Texture& tex,
   
   // Task 4: Implement bilinear filtering
 
-  // return magenta for invalid level
-  return Color(1,0,1,1);
+// Ensure valid level
+
+    if (level < 0 || level >= tex.mipmap.size()) {
+      return Color(1,0,1,1);
+    }
+    // Fetch the mip level texture data
+    const MipLevel& mip = tex.mipmap[level];
+
+    // Clamp coordinates to [0, 1]
+    u = clamp(u, 0.0f, 1.0f);
+    v = clamp(v, 0.0f, 1.0f);
+
+    // Scale u and v to the size of the texture
+    float tex_u = u * (mip.width - 1);
+    float tex_v = v * (mip.height - 1);
+
+    // Compute integer coordinates of the four nearest texels
+    int x0 = static_cast<int>(tex_u);
+    int y0 = static_cast<int>(tex_v);
+    int x1 = std::min(x0 + 1, static_cast<int>(mip.width - 1));
+    int y1 = std::min(y0 + 1, static_cast<int>(mip.height - 1));
+
+    // Compute the interpolation weights
+    float dx = tex_u - x0;
+    float dy = tex_v - y0;
+    float wx0 = 1.0f - dx;
+    float wx1 = dx;
+    float wy0 = 1.0f - dy;
+    float wy1 = dy;
+
+    // Access the texels at the four corners of the bilinear interpolation
+    const unsigned char* texel00 = &mip.texels[4 * (y0 * mip.width + x0)];
+    const unsigned char* texel01 = &mip.texels[4 * (y0 * mip.width + x1)];
+    const unsigned char* texel10 = &mip.texels[4 * (y1 * mip.width + x0)];
+    const unsigned char* texel11 = &mip.texels[4 * (y1 * mip.width + x1)];
+
+    // Extract RGBA values from texels
+    Color c00(texel00[0] / 255.0f, texel00[1] / 255.0f, texel00[2] / 255.0f, texel00[3] / 255.0f);
+    Color c01(texel01[0] / 255.0f, texel01[1] / 255.0f, texel01[2] / 255.0f, texel01[3] / 255.0f);
+    Color c10(texel10[0] / 255.0f, texel10[1] / 255.0f, texel10[2] / 255.0f, texel10[3] / 255.0f);
+    Color c11(texel11[0] / 255.0f, texel11[1] / 255.0f, texel11[2] / 255.0f, texel11[3] / 255.0f);
+
+    // Interpolate in the x direction (horizontal)
+    Color c0 = c00 * wx0 + c01 * wx1;  // Left side interpolation
+    Color c1 = c10 * wx0 + c11 * wx1;  // Right side interpolation
+
+    // Interpolate in the y direction (vertical)
+    Color c = c0 * wy0 + c1 * wy1;
+
+    return c;
 
 }
 
