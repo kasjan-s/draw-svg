@@ -53,24 +53,25 @@ void SoftwareRendererImp::fill_pixel(int x, int y, const Color &color) {
 
 	// Task 2: Re-implement this function
 
-	// check bounds
+	// // check bounds
 	if (x < 0 || x >= width) return;
 	if (y < 0 || y >= height) return;
 
-	Color pixel_color;
-	float inv255 = 1.0 / 255.0;
-  
-	pixel_color.r = pixel_buffer[4 * (x + y * width)] * inv255;
-	pixel_color.g = pixel_buffer[4 * (x + y * width) + 1] * inv255;
-	pixel_color.b = pixel_buffer[4 * (x + y * width) + 2] * inv255;
-	pixel_color.a = pixel_buffer[4 * (x + y * width) + 3] * inv255;
-
-	pixel_color = alpha_blending(pixel_color, color);
+  float inv255 = 1.0 / 255.0;
 
   for (int i = 0; i < sample_rate; ++i) {
     for (int j = 0; j < sample_rate; ++j) {
+      Color pixel_color;
+
       int sx = sample_rate * x + i;
       int sy = sample_rate * y + j;
+
+      pixel_color.r = sample_buffer[4 * (sx + sy * sample_rate * width)] * inv255;
+      pixel_color.g = sample_buffer[4 * (sx + sy * sample_rate * width) + 1] * inv255;
+      pixel_color.b = sample_buffer[4 * (sx + sy * sample_rate * width) + 2] * inv255;
+      pixel_color.a = sample_buffer[4 * (sx + sy * sample_rate * width) + 3] * inv255;
+
+	    pixel_color = alpha_blending(pixel_color, color);
 
       sample_buffer[4 * (sx + sy * sample_rate * width)] = (uint8_t)(pixel_color.r * 255);
       sample_buffer[4 * (sx + sy * sample_rate * width) + 1] = (uint8_t)(pixel_color.g * 255);
@@ -330,16 +331,19 @@ void SoftwareRendererImp::rasterize_line( float x0, float y0,
   // Task 0: 
   // Implement Bresenham's algorithm (delete the line below and implement your own)
   // ref->rasterize_line_helper(x0, y0, x1, y1, width, height, color, this);
-  bresenham(x0, y0, x1, y1, color, width);
+  // bresenham(x0, y0, x1, y1, color);
+
+  // Shifting coordinates by 0.5 to move from sample space to screen space.
+  xiaolin(x0 - 0.5, y0 - 0.5, x1 - 0.5, y1 - 0.5, color, width);
 
   // Advanced Task
   // Drawing Smooth Lines with Line Width
 }
 
-void SoftwareRendererImp::bresenham(float x0, float y0, float x1, float y1, Color color, int width, bool reflect) {
+void SoftwareRendererImp::bresenham(float x0, float y0, float x1, float y1, Color color, bool reflect) {
   // Switch the point order so we iterate from smaller x coordinate.
   if (x1 - x0 < 0) {
-    return bresenham(x1, y1, x0, y0, color, width, reflect);
+    return bresenham(x1, y1, x0, y0, color, reflect);
   }
 
   int float_sign = 1;
@@ -356,7 +360,7 @@ void SoftwareRendererImp::bresenham(float x0, float y0, float x1, float y1, Colo
       // For higher slopes we are reflecting the line around y=x slope by swapping x0 with y0, and x1 with y1.
       // This allows us to reuse Bresenham's algorithm for quadrants where slope is bigger than 1, as in this new
       // reflected coordinate system new slope value is m' = (x1-x0) / (y1-y0) = 1/m ==> it's between 0 and 1.
-      return bresenham(y0, x0, y1, x1, color, width, true);
+      return bresenham(y0, x0, y1, x1, color, true);
     }
   } else {
     // 1 point line.
@@ -365,27 +369,23 @@ void SoftwareRendererImp::bresenham(float x0, float y0, float x1, float y1, Colo
     }
 
     // x0 == x1 is equivalent to slope m = infinity. If we reflect, we'll work equivalent line with m' = 0.
-    return bresenham(y0, x0, y1, x1, color, width, true);
+    return bresenham(y0, x0, y1, x1, color, true);
   }
 
-  int sx0 = get_sample_coordinate(x0, sample_rate);
-  int sx1 = get_sample_coordinate(x1, sample_rate);
-  int sy0 = get_sample_coordinate(y0, sample_rate);
-  int sy1 = get_sample_coordinate(y1, sample_rate);
+  int sx0 = floor(x0);
+  int sx1 = floor(x1);
+  int sy0 = floor(y0);
+  int sy1 = floor(y1);
 
   int dx = sx1 - sx0;
   int dy = sy1 - sy0;
   int y = sy0;
   int error = 0;
   for (int x = sx0; x <= sx1; ++x) {
-    int sample_width = sample_rate * width;
-    int sy = y - sample_width / 2;
-    for (int w = 0; w < sample_width; ++w) {
       if (reflect) {
-        fill_sample(sy + w, x, color);
+        fill_pixel(y, x, color);
       } else {
-        fill_sample(x, sy + w, color);
-      }
+        fill_pixel(x, y, color);
     }
 
     error += float_sign * dy;
@@ -393,6 +393,73 @@ void SoftwareRendererImp::bresenham(float x0, float y0, float x1, float y1, Colo
       y += float_sign;
       error -= dx;
     }
+  }
+}
+
+void SoftwareRendererImp::xiaolin(float x0, float y0, float x1, float y1, Color color, int width) {
+  bool steep = abs(y1-y0) > abs(x1-x0);
+  if (steep) {
+    std::swap(x0, y0);
+    std::swap(x1, y1);
+  }
+
+  if (x0 > x1) {
+    std::swap(x0, x1);
+    std::swap(y0, y1);
+  }
+
+  float gradient = 1.0f;
+  if (x1 != x0) {
+    gradient = (y1 - y0) / (x1 - x0);
+  }
+
+  int x_end = round(x0);
+  float y_end = y0 + gradient * (x_end - x0);
+
+  float x_gap = floor(x0 + 0.5) + 0.5 - x0;
+
+  int x_pixel_1 = x_end;
+  int y_pixel_1 = floor(y_end);
+
+  Color pixel_color = color;
+  float y_end_fpart = y_end - floor(y_end);
+  if (steep) {
+    fill_pixel(y_pixel_1, x_pixel_1, (1.0 - y_end_fpart) * x_gap * color);
+    fill_pixel(y_pixel_1 + 1, x_pixel_1, y_end_fpart * x_gap * color);
+  } else {
+    fill_pixel(x_pixel_1, y_pixel_1, (1.0 - y_end_fpart) * x_gap * color);
+    fill_pixel(x_pixel_1, y_pixel_1 + 1,  y_end_fpart * x_gap * color);
+  }
+
+  float inter_y = y_end + gradient;
+
+  // handle second endpoint
+  x_end = round(x1);
+  y_end = y1 + gradient * (x_end - x1);
+  x_gap = x1 + 0.5 - floor(x1 + 0.5);
+  int x_pixel_2 = x_end;
+  int y_pixel_2 = floor(y_end);
+  y_end_fpart = y_end - floor(y_end);
+  if (steep) {
+    fill_pixel(y_pixel_2, x_pixel_2, (1.0 - y_end_fpart) * x_gap * color);
+    fill_pixel(y_pixel_2 + 1, x_pixel_2, y_end_fpart * x_gap * pixel_color);
+  } else {
+    fill_pixel(x_pixel_2, y_pixel_2, (1.0 - y_end_fpart) * x_gap * color);
+    fill_pixel(x_pixel_2, y_pixel_2 + 1, y_end_fpart * x_gap * pixel_color);
+  }
+
+  for (int x = x_pixel_1 + 1; x < x_pixel_2; ++x) {
+    float inter_y_fpart = inter_y - floor(inter_y);
+
+    if (steep) {
+      fill_pixel(floor(inter_y), x, (1.0 - inter_y_fpart) * pixel_color);
+      fill_pixel(floor(inter_y) + 1, x, inter_y_fpart * pixel_color);
+    } else {
+      fill_pixel(x, floor(inter_y), (1.0 - inter_y_fpart) * pixel_color);
+      fill_pixel(x, floor(inter_y) + 1, inter_y_fpart * pixel_color);
+    }
+
+    inter_y += gradient;
   }
 }
 
@@ -437,8 +504,10 @@ void SoftwareRendererImp::rasterize_triangle( float x0, float y0,
       for (int i = 0; i < sample_rate; ++i) {
         for (int j = 0; j < sample_rate; ++j) { 
           float sample_fraction = 1.0f / sample_rate;
-          float sample_x = sample_fraction * i + x;
-          float sample_y = sample_fraction * j + y;
+          
+          // +0.5 offset to convert to sample coordinates.
+          float sample_x = sample_fraction * i + x + 0.5;
+          float sample_y = sample_fraction * j + y + 0.5;
 
           if (all_of(lines.begin(), lines.end(), [sample_x, sample_y, orientation](const LineEquation& line) {
               return orientation * line.test(sample_x, sample_y) <= 0;
@@ -496,7 +565,6 @@ void SoftwareRendererImp::resolve( void ) {
   // Implement supersampling
   // You may also need to modify other functions marked with "Task 2".
   
-	float inv255 = 1.0 / 255.0;
   float sample_fraction = 1.0f / (sample_rate * sample_rate);
 
   for (int x = 0; x < width; ++x) {

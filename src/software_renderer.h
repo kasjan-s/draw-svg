@@ -141,7 +141,10 @@ private:
 	
 	// Implementation of Bresenham's algorithm to draw a line.
 	// |reflect| indicates that we are reflecting coordinate system around y=x slope.
-	void bresenham(float x0, float y0, float x1, float y1, Color color, int width, bool reflect = false);
+	void bresenham(float x0, float y0, float x1, float y1, Color color, bool reflect = false);
+
+	// Implementation of Xiaolin Wu's line algorithm.
+	void xiaolin(float x0, float y0, float x1, float y1, Color color, int width);
 
 	// rasterize a triangle
 	void rasterize_triangle(float x0, float y0,
