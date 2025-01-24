@@ -324,10 +324,11 @@ void SoftwareRendererImp::rasterize_line( float x0, float y0,
   // Task 0: 
   // Implement Bresenham's algorithm (delete the line below and implement your own)
   // ref->rasterize_line_helper(x0, y0, x1, y1, width, height, color, this);
-  // bresenham(x0, y0, x1, y1, color);
+  bresenham(x0, y0, x1, y1, color);
 
-  // Shifting coordinates by 0.5 to move from sample space to screen space.
-  xiaolin(x0, y0, x1, y1, color);
+  // bresenham_width(x0, y0, x1, y1, color, width);
+  
+  // xiaolin(x0, y0, x1, y1, color);
 
   // Advanced Task
   // Drawing Smooth Lines with Line Width
@@ -365,10 +366,10 @@ void SoftwareRendererImp::bresenham(float x0, float y0, float x1, float y1, Colo
     return bresenham(y0, x0, y1, x1, color, true);
   }
 
-  int sx0 = floor(x0);
-  int sx1 = floor(x1);
-  int sy0 = floor(y0);
-  int sy1 = floor(y1);
+  int sx0 = std::round(x0 - 0.5);
+  int sx1 = std::round(x1 - 0.5);
+  int sy0 = std::round(y0 - 0.5);
+  int sy1 = std::round(y1 - 0.5);
 
   int dx = sx1 - sx0;
   int dy = sy1 - sy0;
@@ -379,6 +380,67 @@ void SoftwareRendererImp::bresenham(float x0, float y0, float x1, float y1, Colo
         fill_pixel(y, x, color);
       } else {
         fill_pixel(x, y, color);
+    }
+
+    error += float_sign * dy;
+    if ((error << 1) >= float_sign * dx) {
+      y += float_sign;
+      error -= dx;
+    }
+  }
+}
+
+void SoftwareRendererImp::bresenham_width(float x0, float y0, float x1, float y1, Color color, int width, bool reflect) {
+  // Switch the point order so we iterate from smaller x coordinate.
+  if (x1 - x0 < 0) {
+    return bresenham_width(x1, y1, x0, y0, color, width, reflect);
+  }
+
+  int float_sign = 1;
+  if (x1 != x0) {
+    // Slope value.
+    float m = (y1-y0)/(x1-x0);
+
+    if (m < 0) {
+      float_sign = -1;
+    }
+
+    if (abs(m) > 1) {
+      // Bresenham algorithm works for slopes with abs value less or equal to 1. 
+      // For higher slopes we are reflecting the line around y=x slope by swapping x0 with y0, and x1 with y1.
+      // This allows us to reuse Bresenham's algorithm for quadrants where slope is bigger than 1, as in this new
+      // reflected coordinate system new slope value is m' = (x1-x0) / (y1-y0) = 1/m ==> it's between 0 and 1.
+      return bresenham_width(y0, x0, y1, x1, color, width, true);
+    }
+  } else {
+    // 1 point line.
+    if (y1 == y0) {
+      return rasterize_point(x0, y0, color);
+    }
+
+    // x0 == x1 is equivalent to slope m = infinity. If we reflect, we'll work equivalent line with m' = 0.
+    return bresenham_width(y0, x0, y1, x1, color, width, true);
+  }
+
+  int sx0 = get_sample_coordinate(x0 - 0.5, sample_rate);
+  int sx1 = get_sample_coordinate(x1 - 0.5, sample_rate);
+  int sy0 = get_sample_coordinate(y0 - 0.5, sample_rate);
+  int sy1 = get_sample_coordinate(y1 - 0.5, sample_rate);
+
+  int dx = sx1 - sx0;
+  int dy = sy1 - sy0;
+  int y = sy0;
+  int error = 0;
+  
+  for (int x = sx0; x <= sx1; ++x) {
+    int sample_width = sample_rate * width;
+    int sy = y - sample_width / 2;
+    for (int w = 0; w < sample_width; ++w) {
+      if (reflect) {
+        fill_sample(sy + w, x, color);
+      } else {
+        fill_sample(x, sy + w, color);
+      }
     }
 
     error += float_sign * dy;
