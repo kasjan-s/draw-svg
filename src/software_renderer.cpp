@@ -532,25 +532,34 @@ void SoftwareRendererImp::rasterize_image( float x0, float y0,
   Sampler2DImp sampler(SampleMethod::NEAREST);
   //Sampler2DImp sampler(SampleMethod::BILINEAR);
 
-  // Convert normalized coordinates to screen coordinates
+  // Image bounds
   int screen_x0 = static_cast<int>(std::floor(x0));
   int screen_y0 = static_cast<int>(std::floor(y0));
   int screen_x1 = static_cast<int>(std::ceil(x1));
   int screen_y1 = static_cast<int>(std::ceil(y1));
 
+  float sample_fraction = 1.0f / sample_rate;
+
   // Iterate over the pixels in the bounding box
-  for (int y = screen_y0; y < screen_y1; ++y) {
-      for (int x = screen_x0; x < screen_x1; ++x) {
-          // Map screen space (x, y) to normalized texture coordinates (u, v)
-          float u = (x + 0.5f - x0) / (x1 - x0);
-          float v = (y + 0.5f - y0) / (y1 - y0);
+  for (int y = screen_y0; y <= screen_y1; ++y) {
+      for (int x = screen_x0; x <= screen_x1; ++x) {
+          for (int i = 0; i < sample_rate; ++i) {
+            for (int j = 0; j < sample_rate; ++j) {
+              float sample_x = sample_fraction * i + x + 0.5;
+              float sample_y = sample_fraction * j + y + 0.5;
 
-          // Sample the texture using bilinear interpolation via the sampler
-          Color tex_color = sampler.sample_nearest(tex, u, v, 0);
-          //Color tex_color = sampler.sample_bilinear(tex, u, v, 0);
+              // Map screen space (x, y) to normalized texture coordinates (u, v)
+              float u = (sample_x - x0) / (x1 - x0);
+              float v = (sample_y - y0) / (y1 - y0);
 
-          // Blend the sampled color into the framebuffer
-          fill_pixel(x, y, tex_color);
+              // Sample the texture using bilinear interpolation via the sampler
+              // Color tex_color = sampler.sample_nearest(tex, u, v, 0);
+              Color tex_color = sampler.sample_bilinear(tex, u, v, 0);
+
+              // Blend the sampled color into the framebuffer
+              fill_sample(x * sample_rate + i, y * sample_rate + j, tex_color);
+            }
+          }
       }
   }
 
@@ -596,9 +605,9 @@ Color SoftwareRendererImp::alpha_blending(Color pixel_color, Color color)
   // Task 5
   // Implement alpha compositing
   pixel_color.a = 1.0 - (1.0 - color.a) * (1.0 - pixel_color.a);
-  pixel_color.r = (1 - color.a) * pixel_color.r + color.r;
-  pixel_color.g = (1 - color.a) * pixel_color.g + color.g;
-  pixel_color.b = (1 - color.a) * pixel_color.b + color.b;
+  pixel_color.r = (1.0 - color.a) * pixel_color.r + color.r;
+  pixel_color.g = (1.0 - color.a) * pixel_color.g + color.g;
+  pixel_color.b = (1.0 - color.a) * pixel_color.b + color.b;
 
   return pixel_color;
 }
