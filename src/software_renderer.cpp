@@ -303,22 +303,15 @@ void SoftwareRendererImp::draw_group( Group& group ) {
 // The input arguments in the rasterization functions 
 // below are all defined in screen space coordinates
 
-void SoftwareRendererImp::rasterize_point( float x, float y, Color color ) {
+void SoftwareRendererImp::rasterize_point(float x, float y, Color color ) {
 
   // fill in the nearest pixel
-  int sx = (int)floor(x);
-  int sy = (int)floor(y);
+  int sx = static_cast<int>(round(x - 0.5));
+  int sy = static_cast<int>(round(y - 0.5));
 
   // check bounds
   if (sx < 0 || sx >= width) return;
   if (sy < 0 || sy >= height) return;
-
-  // fill sample - NOT doing alpha blending!
-  // TODO: Call fill_pixel here to run alpha blending
-  // pixel_buffer[4 * (sx + sy * width)] = (uint8_t)(color.r * 255);
-  // pixel_buffer[4 * (sx + sy * width) + 1] = (uint8_t)(color.g * 255);
-  // pixel_buffer[4 * (sx + sy * width) + 2] = (uint8_t)(color.b * 255);
-  // pixel_buffer[4 * (sx + sy * width) + 3] = (uint8_t)(color.a * 255);
 
   fill_pixel(sx, sy, color);
 }
@@ -334,7 +327,7 @@ void SoftwareRendererImp::rasterize_line( float x0, float y0,
   // bresenham(x0, y0, x1, y1, color);
 
   // Shifting coordinates by 0.5 to move from sample space to screen space.
-  xiaolin(x0 - 0.5, y0 - 0.5, x1 - 0.5, y1 - 0.5, color, width);
+  xiaolin(x0, y0, x1, y1, color);
 
   // Advanced Task
   // Drawing Smooth Lines with Line Width
@@ -396,7 +389,14 @@ void SoftwareRendererImp::bresenham(float x0, float y0, float x1, float y1, Colo
   }
 }
 
-void SoftwareRendererImp::xiaolin(float x0, float y0, float x1, float y1, Color color, int width) {
+void SoftwareRendererImp::xiaolin(float x0, float y0, float x1, float y1, Color color) {
+  // First let's go from screen coordinates to pixel coordinates.
+  // E.g. point (0.5,0.5) would correspond to the center of pixel (0,0).
+  x0 -= 0.5;
+  y0 -= 0.5;
+  x1 -= 0.5;
+  y1 -= 0.5;
+
   bool steep = abs(y1-y0) > abs(x1-x0);
   if (steep) {
     std::swap(x0, y0);
@@ -408,58 +408,56 @@ void SoftwareRendererImp::xiaolin(float x0, float y0, float x1, float y1, Color 
     std::swap(y0, y1);
   }
 
-  float gradient = 1.0f;
+  float slope = 1.0f;
   if (x1 != x0) {
-    gradient = (y1 - y0) / (x1 - x0);
+    slope = (y1 - y0) / (x1 - x0);
   }
-
-  int x_end = round(x0);
-  float y_end = y0 + gradient * (x_end - x0);
-
-  float x_gap = floor(x0 + 0.5) + 0.5 - x0;
-
-  int x_pixel_1 = x_end;
-  int y_pixel_1 = floor(y_end);
 
   Color pixel_color = color;
-  float y_end_fpart = y_end - floor(y_end);
+
+  // First endpoint
+  int x_pixel_0 = static_cast<int>(round(x0));
+  int y_pixel_0 = floor(y0 + slope * (x_pixel_0 - x0));
+  float y_val_0 = y0 + slope * (x_pixel_0 - x0);
+  float x0_gap = floor(x0 + 0.5) - (x0 - 0.5);
+
+  float y_dist = y_val_0 - floor(y_val_0);
   if (steep) {
-    fill_pixel(y_pixel_1, x_pixel_1, (1.0 - y_end_fpart) * x_gap * color);
-    fill_pixel(y_pixel_1 + 1, x_pixel_1, y_end_fpart * x_gap * color);
+    fill_pixel(y_pixel_0, x_pixel_0, (1.0 - y_dist) * x0_gap * color);
+    fill_pixel(y_pixel_0 + 1, x_pixel_0, y_dist * x0_gap * color);
   } else {
-    fill_pixel(x_pixel_1, y_pixel_1, (1.0 - y_end_fpart) * x_gap * color);
-    fill_pixel(x_pixel_1, y_pixel_1 + 1,  y_end_fpart * x_gap * color);
+    fill_pixel(x_pixel_0, y_pixel_0, (1.0 - y_dist) * x0_gap * color);
+    fill_pixel(x_pixel_0, y_pixel_0 + 1,  y_dist * x0_gap * color);
   }
 
-  float inter_y = y_end + gradient;
+  // Second endpoint
+  int x_pixel_1 = static_cast<int>(round(x1));
+  int y_pixel_1 = floor(y1 + slope * (x_pixel_1 - x1));
+  float y_val_1 = y1 + slope * (x_pixel_1 - x1);
+  float x1_gap = x1 + 0.5 - floor(x1 + 0.5);
 
-  // handle second endpoint
-  x_end = round(x1);
-  y_end = y1 + gradient * (x_end - x1);
-  x_gap = x1 + 0.5 - floor(x1 + 0.5);
-  int x_pixel_2 = x_end;
-  int y_pixel_2 = floor(y_end);
-  y_end_fpart = y_end - floor(y_end);
+  y_dist = y_val_1 - floor(y_val_1);
   if (steep) {
-    fill_pixel(y_pixel_2, x_pixel_2, (1.0 - y_end_fpart) * x_gap * color);
-    fill_pixel(y_pixel_2 + 1, x_pixel_2, y_end_fpart * x_gap * pixel_color);
+    fill_pixel(y_pixel_1, x_pixel_1, (1.0 - y_dist) * x1_gap * color);
+    fill_pixel(y_pixel_1 + 1, x_pixel_1, y_dist * x1_gap * pixel_color);
   } else {
-    fill_pixel(x_pixel_2, y_pixel_2, (1.0 - y_end_fpart) * x_gap * color);
-    fill_pixel(x_pixel_2, y_pixel_2 + 1, y_end_fpart * x_gap * pixel_color);
+    fill_pixel(x_pixel_1, y_pixel_1, (1.0 - y_dist) * x1_gap * color);
+    fill_pixel(x_pixel_1, y_pixel_1 + 1, y_dist * x1_gap * pixel_color);
   }
 
-  for (int x = x_pixel_1 + 1; x < x_pixel_2; ++x) {
-    float inter_y_fpart = inter_y - floor(inter_y);
+  float y = y_val_0 + slope;
+  for (int x = x_pixel_0 + 1; x < x_pixel_1; ++x) {
+    float y_dist = y - floor(y);
 
     if (steep) {
-      fill_pixel(floor(inter_y), x, (1.0 - inter_y_fpart) * pixel_color);
-      fill_pixel(floor(inter_y) + 1, x, inter_y_fpart * pixel_color);
+      fill_pixel(floor(y), x, (1.0 - y_dist) * pixel_color);
+      fill_pixel(floor(y) + 1, x, y_dist * pixel_color);
     } else {
-      fill_pixel(x, floor(inter_y), (1.0 - inter_y_fpart) * pixel_color);
-      fill_pixel(x, floor(inter_y) + 1, inter_y_fpart * pixel_color);
+      fill_pixel(x, floor(y), (1.0 - y_dist) * pixel_color);
+      fill_pixel(x, floor(y) + 1, y_dist * pixel_color);
     }
 
-    inter_y += gradient;
+    y += slope;
   }
 }
 
@@ -505,7 +503,7 @@ void SoftwareRendererImp::rasterize_triangle( float x0, float y0,
         for (int j = 0; j < sample_rate; ++j) { 
           float sample_fraction = 1.0f / sample_rate;
           
-          // +0.5 offset to convert to sample coordinates.
+          // +0.5 offset to convert from sample to screen coordinates.
           float sample_x = sample_fraction * i + x + 0.5;
           float sample_y = sample_fraction * j + y + 0.5;
 
